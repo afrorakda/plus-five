@@ -13,7 +13,6 @@
             --main: #333;
             --bg: #fff;
             --accent: #eee;
-            --input-bg: #fafafa;
             --radius: 15px;
         }
 
@@ -32,7 +31,7 @@
         .container {
             width: 100%;
             max-width: 420px;
-            padding: 60px 20px; /* 余白を広げて圧迫感を解消 */
+            padding: 60px 20px;
             box-sizing: border-box;
             text-align: center;
             display: flex;
@@ -49,19 +48,22 @@
             font-weight: 700;
         }
 
-        /* Timer Display: サイズ調整と隠し機能用のカーソル設定 */
+        /* Timer Display: 1桁時に自動拡大 */
         .timer-display {
-            font-size: 6rem; /* 8remから縮小して抜け感を作成 */
+            font-size: 6rem;
             font-weight: 900;
-            line-height: 1.2;
-            margin: 30px 0;
+            line-height: 1.1;
+            margin: 20px 0;
             font-variant-numeric: tabular-nums;
             cursor: pointer;
             user-select: none;
             -webkit-user-select: none;
+            transition: font-size 0.2s ease;
+        }
+        .timer-display.single-digit {
+            font-size: 10rem;
         }
 
-        /* Controls: ボタンを2つに集約 */
         .controls {
             display: flex;
             justify-content: center;
@@ -74,18 +76,19 @@
             background: var(--accent);
             border: none;
             flex: 1;
-            max-width: 100px;
-            height: 55px;
+            max-width: 120px;
+            height: 60px;
             border-radius: var(--radius);
-            font-size: 1.1rem;
+            font-size: 1.2rem;
             font-weight: 800;
             color: var(--main);
             cursor: pointer;
             -webkit-appearance: none;
-            touch-action: manipulation; /* ズーム防止 */
+            touch-action: manipulation;
+            transition: transform 0.1s;
         }
+        .adj-btn:active { transform: scale(0.95); }
 
-        /* Action Button */
         .action-btn {
             width: 100%;
             padding: 22px;
@@ -97,7 +100,7 @@
             font-weight: 800;
             cursor: pointer;
             transition: transform 0.1s;
-            touch-action: manipulation; /* ズーム防止 */
+            touch-action: manipulation;
         }
         .action-btn:active { transform: scale(0.98); }
         .action-btn.running { background: #ff4444; }
@@ -135,9 +138,9 @@
     <h1>Plus Five</h1>
     <p class="subtitle">One Step Further.</p>
 
-    <div class="record-info" id="lastRecordText">Last: 0s</div>
+    <div class="record-info" id="statusInfo">Last: 0s / Goal: 0s</div>
     
-    <div class="timer-display" id="timerDisplay" onclick="adjust(1)">35</div>
+    <div class="timer-display" id="timerDisplay" onclick="adjust(1)">0</div>
 
     <div class="controls">
         <button class="adj-btn" onclick="adjust(-5)">−5s</button>
@@ -168,30 +171,46 @@
 </div>
 
 <script>
-    let lastRecord = parseInt(localStorage.getItem('plusFive_last')) || 30;
-    let currentSeconds = lastRecord + 5;
+    const STORAGE_LAST = 'plusFive_last';
+    const STORAGE_CURRENT = 'plusFive_current';
+
+    let lastRecord = parseInt(localStorage.getItem(STORAGE_LAST)) || 30;
+    // 初期起動時は保存された現在値、なければLast+5
+    let currentSeconds = parseInt(localStorage.getItem(STORAGE_CURRENT)) || (lastRecord + 5);
     let initialSeconds = currentSeconds;
     let timer = null;
     let audioCtx = null;
 
     const display = document.getElementById('timerDisplay');
     const actionBtn = document.getElementById('actionBtn');
-    const lastRecordText = document.getElementById('lastRecordText');
+    const statusInfo = document.getElementById('statusInfo');
 
     function init() {
         updateDisplay();
-        lastRecordText.textContent = `Last: ${lastRecord}s`;
+        updateStatusText();
+    }
+
+    function updateStatusText() {
+        statusInfo.textContent = `Last: ${lastRecord}s / Goal: ${initialSeconds}s`;
     }
 
     function updateDisplay() {
         display.textContent = currentSeconds;
+        // 1桁の時にクラスを付与して拡大
+        if (currentSeconds < 10) {
+            display.classList.add('single-digit');
+        } else {
+            display.classList.remove('single-digit');
+        }
     }
 
     function adjust(val) {
         if (timer) return;
-        currentSeconds = Math.max(1, currentSeconds + val);
+        currentSeconds = Math.max(0, currentSeconds + val);
         initialSeconds = currentSeconds;
+        localStorage.setItem(STORAGE_CURRENT, currentSeconds); // 調整値を保存
         updateDisplay();
+        updateStatusText();
     }
 
     function initAudio() {
@@ -215,6 +234,11 @@
 
     function toggleTimer() {
         initAudio();
+        if (currentSeconds <= 0 && !timer) {
+            adjust(5); // 0秒で開始しようとしたら5秒セット
+            return;
+        }
+
         if (timer) {
             stopTimer();
         } else {
@@ -248,16 +272,20 @@
         timer = null;
         
         lastRecord = initialSeconds;
-        localStorage.setItem('plusFive_last', lastRecord);
-        lastRecordText.textContent = `Last: ${lastRecord}s`;
+        localStorage.setItem(STORAGE_LAST, lastRecord);
         
+        // 次回の目標をセットして保存
         currentSeconds = lastRecord + 5;
         initialSeconds = currentSeconds;
+        localStorage.setItem(STORAGE_CURRENT, currentSeconds);
+        
         updateDisplay();
+        updateStatusText();
 
         actionBtn.textContent = 'START';
         actionBtn.classList.remove('running');
 
+        // Notification Beep
         beep(880, 0.5);
         setTimeout(() => beep(440, 0.5), 200);
         setTimeout(() => beep(880, 0.5), 400);
